@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     _ = b.addModule("zzip", .{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .source_file = .{ .path = "src/main.zig" },
     });
 
     // TODO: look into clearing out this; not sure what needs to stay for testing
