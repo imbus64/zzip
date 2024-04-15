@@ -1,0 +1,18 @@
+https://medium.com/@felixstridsberg/the-zip-file-format-6c8a160d1c34
+https://en.wikipedia.org/wiki/ZIP_(file_format)
+https://users.cs.jmu.edu/buchhofp/forensics/formats/pkzip.html
+https://support.pkware.com/pkzip/appnote
+https://libzip.org/specifications/extrafld.txt
+https://github.com/thejoshwolfe/hexdump-zip/tree/master
+
+- "The series of [local file header][encryption header][file data][data descriptor]
+   repeats for each file in the .ZIP archive"
+   - local file header   always
+   - encryption header   only if encryption used
+   - file data           only if file type has content (i.e. skip for directories, zero-byte files, etc.)
+   - data descriptor     necessary if flag bit 3 is set, optional? otherwise
+
+- files in a zip archive contain the full relative path in the 'filename' field
+- some zip archives have entries for both the directories and the files in them
+  (e.g. 'images/001.png' -> entries for both 'images' and 'images/001.png')
+- having directories as separate entries is not necessary for a valid archive
