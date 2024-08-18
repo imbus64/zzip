@@ -1,0 +1,537 @@
+diff --git a/.gitignore b/.gitignore
+index 4bfe67f..c827b3c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -2,6 +2,7 @@
+ src/**/*.bin
+ 
+ zig-cache/
++.zig-cache/
+ zig-out/
+ /release/
+ /debug/
+diff --git a/build.zig b/build.zig
+index 9d77c28..d3edffc 100644
+--- a/build.zig
++++ b/build.zig
+@@ -2,7 +2,7 @@ const std = @import("std");
+ 
+ pub fn build(b: *std.Build) void {
+     _ = b.addModule("zzip", .{
+-        .source_file = .{ .path = "src/main.zig" },
++        .root_source_file = b.path("src/main.zig"),
+     });
+ 
+     // TODO: look into clearing this out; not sure what needs to stay for testing
+@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
+     const optimize = b.standardOptimizeOption(.{});
+ 
+     const unit_tests = b.addTest(.{
+-        .root_source_file = .{ .path = "src/main.zig" },
++        .root_source_file = b.path("src/main.zig"),
+         .target = target,
+         .optimize = optimize,
+     });
+diff --git a/build.zig.zon b/build.zig.zon
+index cd1d471..f439898 100644
+--- a/build.zig.zon
++++ b/build.zig.zon
+@@ -2,4 +2,11 @@
+     .name = "ZZIP",
+     .version = "0.0.1",
+     .dependencies = .{},
++    .paths = .{
++        "build.zig",
++        "build.zig.zon",
++        "src",
++        "LICENSE",
++        "README.md",
++    },
+ }
+diff --git a/src/CentralDirectoryFileHeader.zig b/src/CentralDirectoryFileHeader.zig
+index 2fd6253..099ee00 100644
+--- a/src/CentralDirectoryFileHeader.zig
++++ b/src/CentralDirectoryFileHeader.zig
+@@ -1,5 +1,6 @@
+ const std = @import("std");
+ const Allocator = std.mem.Allocator;
++const Endian = std.builtin.Endian;
+ 
+ const EndOfCentralDirectoryRecord = @import("EndOfCentralDirectoryRecord.zig").EndOfCentralDirectoryRecord;
+ const Flags = @import("Flags.zig").Flags;
+@@ -67,31 +68,32 @@ pub const Header = struct {
+     }
+ 
+     pub fn parse(data: []const u8, raw_data: []const u8) !Header {
+-        const sig = std.mem.readIntLittle(u32, data[0..4]);
++        const sig = std.mem.readVarInt(u32, data[0..4], Endian.little);
+         if (sig != signature) return error.InvalidSignature;
+ 
+-        const fnlen: u16 = std.mem.readIntSliceLittle(u16, data[28..30]);
+-        const eflen: u16 = std.mem.readIntSliceLittle(u16, data[30..32]);
+-        const clen: u16 = std.mem.readIntSliceLittle(u16, data[32..34]);
++        const fnlen: u16 = std.mem.readVarInt(u16, data[28..30], Endian.little);
++        const eflen: u16 = std.mem.readVarInt(u16, data[30..32], Endian.little);
++        const clen: u16 = std.mem.readVarInt(u16, data[32..34], Endian.little);
+         const size: u32 = 46 + fnlen + eflen + clen;
+ 
+         return .{
+             .ver_made_by = Version.parseSlice(data[4..6]),
+             .ver_min = Version.parseSlice(data[6..8]),
+-            .flags = .{}, // TODO: impl, std.mem.readIntSliceLittle(u16, data[8..10]),
+-            .compression = @enumFromInt(std.mem.readIntSliceLittle(u16, data[10..12])),
+-            .mod_time = MSDOSTime.parseInt(std.mem.readIntSliceLittle(u16, data[12..14])),
+-            .mod_date = MSDOSDate.parseInt(std.mem.readIntSliceLittle(u16, data[14..16])),
+-            .crc32 = std.mem.readIntSliceLittle(u32, data[16..20]),
+-            .size_compressed = std.mem.readIntSliceLittle(u32, data[20..24]),
+-            .size_uncompressed = std.mem.readIntSliceLittle(u32, data[24..28]),
++            .flags = .{}, // TODO: impl, std.mem.readVarIntSliceLittle(u16, data[8..10]),
++            .compression = @enumFromInt(std.mem.readVarInt(u16, data[10..12], Endian.little)),
++            // .compression = @enumFromInt(std.mem.readVarIntSliceLittle(u16, data[10..12])),
++            .mod_time = MSDOSTime.parseInt(std.mem.readVarInt(u16, data[12..14], Endian.little)),
++            .mod_date = MSDOSDate.parseInt(std.mem.readVarInt(u16, data[14..16], Endian.little)),
++            .crc32 = std.mem.readVarInt(u32, data[16..20], Endian.little),
++            .size_compressed = std.mem.readVarInt(u32, data[20..24], Endian.little),
++            .size_uncompressed = std.mem.readVarInt(u32, data[24..28], Endian.little),
+             .len_filename = fnlen,
+             .len_extra_field = eflen,
+             .len_comment = clen,
+-            .disk = std.mem.readIntSliceLittle(u16, data[34..36]),
+-            .attr_internal = std.mem.readIntSliceLittle(u16, data[36..38]), // TODO: impl
+-            .attr_external = std.mem.readIntSliceLittle(u32, data[38..42]), // TODO: impl
+-            .local_header_offset = std.mem.readIntSliceLittle(u32, data[42..46]),
++            .disk = std.mem.readVarInt(u16, data[34..36], Endian.little),
++            .attr_internal = std.mem.readVarInt(u16, data[36..38], Endian.little), // TODO: impl
++            .attr_external = std.mem.readVarInt(u32, data[38..42], Endian.little), // TODO: impl
++            .local_header_offset = std.mem.readVarInt(u32, data[42..46], Endian.little),
+             .filename = data[46 .. 46 + fnlen],
+             .extra_field = data[46 + fnlen .. 46 + fnlen + eflen],
+             .comment = data[46 + fnlen + eflen .. 46 + fnlen + eflen + clen],
+diff --git a/src/Compression.zig b/src/Compression.zig
+index 2ed160b..432a73a 100644
+--- a/src/Compression.zig
++++ b/src/Compression.zig
+@@ -28,17 +28,14 @@ pub const Compression = enum(u16) {
+ 
+     pub fn compress(
+         comp: Compression,
+-        alloc: Allocator,
+         data: []const u8,
+         writer: anytype,
+     ) !void {
+         try switch (comp) {
+             .None => writer.writeAll(data),
+             .Deflate => {
+-                var defl = try std.compress.deflate.compressor(alloc, writer, .{});
+-                defer defl.deinit();
++                var defl = try std.compress.flate.compressor(writer, .{}); // Default compression level
+                 _ = try defl.write(data);
+-                try defl.close();
+             },
+             else => return error.UnsupportedCompression,
+         };
+@@ -59,8 +56,10 @@ pub const Compression = enum(u16) {
+             .Deflate => {
+                 var fb = std.io.fixedBufferStream(data);
+ 
+-                var defl = try std.compress.deflate.decompressor(alloc, fb.reader(), null);
+-                defer defl.deinit();
++                const reader = fb.reader();
++
++                var defl = std.compress.flate.decompressor(reader);
++                // defer defl.deinit();
+                 var defl_r = defl.reader();
+ 
+                 const out_data = try defl_r.readAllAlloc(alloc, std.math.maxInt(usize));
+diff --git a/src/EndOfCentralDirectoryRecord.zig b/src/EndOfCentralDirectoryRecord.zig
+index 86198e1..606730f 100644
+--- a/src/EndOfCentralDirectoryRecord.zig
++++ b/src/EndOfCentralDirectoryRecord.zig
+@@ -1,4 +1,5 @@
+ const std = @import("std");
++const Endian = std.builtin.Endian;
+ const Allocator = std.mem.Allocator;
+ 
+ // EndOfCentralDirectoryRecord
+@@ -29,12 +30,12 @@ pub const EndOfCentralDirectoryRecord = struct {
+         var eocd: ?[]const u8 = null;
+         var clen: u16 = undefined;
+         for (2..@min(data.len, 0xFFFF)) |i| {
+-            const i_clen = data.len - i;
+-            clen = std.mem.readIntSliceLittle(u16, data[i_clen .. i_clen + 2]);
++            const i_clen = data.len - i; // TODO: Cleanup
++            clen = std.mem.readVarInt(u16, data[i_clen .. i_clen + 2], Endian.little);
+             if (clen != i - 2 and i_clen >= 20) continue;
+ 
+             const i_sig = data.len - i - 20;
+-            const sig = std.mem.readIntSliceLittle(u32, data[i_sig .. i_sig + 4]);
++            const sig = std.mem.readVarInt(u32, data[i_sig .. i_sig + 4], Endian.little);
+             if (sig != signature) continue;
+ 
+             eocd = data[i_sig..data.len];
+@@ -43,12 +44,12 @@ pub const EndOfCentralDirectoryRecord = struct {
+         if (eocd == null) return error.EndOfCentralDirectoryNotFound;
+ 
+         return .{
+-            .disk = std.mem.readIntLittle(u16, eocd.?[4..6]),
+-            .directory_disk = std.mem.readIntLittle(u16, eocd.?[6..8]),
+-            .records_this_disk = std.mem.readIntLittle(u16, eocd.?[8..10]),
+-            .total_records = std.mem.readIntLittle(u16, eocd.?[10..12]),
+-            .directory_size = std.mem.readIntLittle(u32, eocd.?[12..16]),
+-            .directory_start_offset = std.mem.readIntLittle(u32, eocd.?[16..20]),
++            .disk = std.mem.readVarInt(u16, eocd.?[4..6], Endian.little),
++            .directory_disk = std.mem.readVarInt(u16, eocd.?[6..8], Endian.little),
++            .records_this_disk = std.mem.readVarInt(u16, eocd.?[8..10], Endian.little),
++            .total_records = std.mem.readVarInt(u16, eocd.?[10..12], Endian.little),
++            .directory_size = std.mem.readVarInt(u32, eocd.?[12..16], Endian.little),
++            .directory_start_offset = std.mem.readVarInt(u32, eocd.?[16..20], Endian.little),
+             .comment_length = clen,
+             .comment = eocd.?[22 .. 22 + clen],
+             .raw_record = eocd.?,
+diff --git a/src/ExtraField.zig b/src/ExtraField.zig
+index fb8d507..a72cc34 100644
+--- a/src/ExtraField.zig
++++ b/src/ExtraField.zig
+@@ -1,6 +1,7 @@
+ const std = @import("std");
+ const Allocator = std.mem.Allocator;
+ const ArrayList = std.ArrayList;
++const Endian = std.builtin.Endian;
+ 
+ // https://libzip.org/specifications/extrafld.txt
+ 
+@@ -46,8 +47,8 @@ pub const RawExtraField = struct {
+     }
+ 
+     pub fn parse(data: []const u8) !Self {
+-        const id = std.mem.readIntSliceLittle(u16, data[0..2]);
+-        const len = std.mem.readIntSliceLittle(u16, data[2..4]) + 4;
++        const id = std.mem.readIntSlicEndian.little(u16, data[0..2]);
++        const len = std.mem.readIntSlicEndian.little(u16, data[2..4]) + 4;
+         if (len != data.len) return error.InvalidSize;
+         return .{
+             .id = id,
+@@ -81,9 +82,9 @@ pub const GenericEF = struct {
+     data: []const u8,
+ 
+     pub fn parseSlice(data: []const u8) !Self {
+-        if (std.mem.readIntSliceLittle(u16, data[2..4]) + 4 != data.len) return error.InvalidSize;
++        if (std.mem.readIntSlicEndian.little(u16, data[2..4]) + 4 != data.len) return error.InvalidSize;
+         return .{
+-            .id = std.mem.readIntSliceLittle(u16, data[0..2]),
++            .id = std.mem.readIntSlicEndian.little(u16, data[0..2]),
+             .data = data,
+         };
+     }
+@@ -101,8 +102,8 @@ pub const GenericEF = struct {
+     fn writeLocal(ptr: *anyopaque, data: *ArrayList(u8)) !void {
+         const self: *Self = @ptrCast(@alignCast(ptr));
+         const writer = data.writer();
+-        try writer.writeIntLittle(u16, self.id);
+-        try writer.writeIntLittle(u16, @as(u16, @intCast(self.data.len)));
++        try writer.writeInEndian.little(u16, self.id);
++        try writer.writeInEndian.little(u16, @as(u16, @intCast(self.data.len)));
+         if (self.data.len > 0)
+             try writer.writeAll(self.data);
+     }
+@@ -110,8 +111,8 @@ pub const GenericEF = struct {
+     fn writeDirectory(ptr: *anyopaque, data: *ArrayList(u8)) !void {
+         const self: *Self = @ptrCast(@alignCast(ptr));
+         const writer = data.writer();
+-        try writer.writeIntLittle(u16, self.id);
+-        try writer.writeIntLittle(u16, @as(u16, @intCast(self.data.len)));
++        try writer.writeInEndian.little(u16, self.id);
++        try writer.writeInEndian.little(u16, @as(u16, @intCast(self.data.len)));
+         if (self.data.len > 0)
+             try writer.writeAll(self.data);
+     }
+@@ -133,8 +134,8 @@ pub const TemplateEF = struct {
+     pub const id: u16 = 0xFFFF;
+ 
+     pub fn parseSlice(data: []const u8) !Self {
+-        if (std.mem.readIntSliceLittle(u16, data[0..2]) != id) return error.InvalidId;
+-        if (std.mem.readIntSliceLittle(u16, data[2..4]) + 4 != data.len) return error.InvalidSize;
++        if (std.mem.readIntSlicEndian.little(u16, data[0..2]) != id) return error.InvalidId;
++        if (std.mem.readIntSlicEndian.little(u16, data[2..4]) + 4 != data.len) return error.InvalidSize;
+         return .{};
+     }
+ 
+@@ -152,7 +153,7 @@ pub const TemplateEF = struct {
+         const self: *Self = @ptrCast(@alignCast(ptr));
+         _ = self;
+         const writer = data.writer();
+-        try writer.writeInt(u16, id, .Little);
++        try writer.writeInt(u16, id, Endian.little);
+         // ExtraField
+         //  2 | Header ID
+         //  2 | Data length (n)
+@@ -163,7 +164,7 @@ pub const TemplateEF = struct {
+         const self: *Self = @ptrCast(@alignCast(ptr));
+         _ = self;
+         const writer = data.writer();
+-        try writer.writeInt(u16, id, .Little);
++        try writer.writeInt(u16, id, Endian.little);
+         // ExtraField
+         //  2 | Header ID
+         //  2 | Data length (n)
+@@ -197,28 +198,28 @@ pub const ExtendedTimestampEF = struct {
+     created: ?i32 = null,
+ 
+     pub fn parseSlice(data: []const u8) !Self {
+-        if (std.mem.readIntSliceLittle(u16, data[0..2]) != id)
++        if (std.mem.readIntSlicEndian.little(u16, data[0..2]) != id)
+             return error.InvalidId;
+-        if (std.mem.readIntSliceLittle(u16, data[2..4]) + 4 != data.len or data.len < 5)
++        if (std.mem.readIntSlicEndian.little(u16, data[2..4]) + 4 != data.len or data.len < 5)
+             return error.InvalidSize;
+ 
+         var et = Self{};
+ 
+-        var flags = data[4];
++        const flags = data[4];
+         var idx: usize = 5;
+         if ((flags & 1) > 0 and idx + 4 <= data.len) {
+             et.flags.modified = true;
+-            et.modified = std.mem.readIntSliceLittle(i32, data[idx .. idx + 4]);
++            et.modified = std.mem.readIntSlicEndian.little(i32, data[idx .. idx + 4]);
+             idx += 4;
+         }
+         if ((flags & 2) > 0 and idx + 4 <= data.len) {
+             et.flags.accessed = true;
+-            et.accessed = std.mem.readIntSliceLittle(i32, data[idx .. idx + 4]);
++            et.accessed = std.mem.readIntSlicEndian.little(i32, data[idx .. idx + 4]);
+             idx += 4;
+         }
+         if ((flags & 4) > 0 and idx + 4 <= data.len) {
+             et.flags.created = true;
+-            et.created = std.mem.readIntSliceLittle(i32, data[idx .. idx + 4]);
++            et.created = std.mem.readIntSlicEndian.little(i32, data[idx .. idx + 4]);
+             idx += 4;
+         }
+ 
+@@ -281,21 +282,21 @@ pub const ExtendedTimestampEF = struct {
+     fn writeLocal(ptr: *anyopaque, data: *ArrayList(u8)) !void {
+         const self: *Self = @ptrCast(@alignCast(ptr));
+         const writer = data.writer();
+-        try writer.writeInt(u16, id, .Little);
+-        try writer.writeInt(u16, self.lenDataLocal(), .Little);
++        try writer.writeInt(u16, id, Endian.little);
++        try writer.writeInt(u16, self.lenDataLocal(), Endian.little);
+         try writer.writeStruct(self.flags);
+-        if (self.modified) |t| try writer.writeInt(i32, t, .Little);
+-        if (self.accessed) |t| try writer.writeInt(i32, t, .Little);
+-        if (self.created) |t| try writer.writeInt(i32, t, .Little);
++        if (self.modified) |t| try writer.writeInt(i32, t, Endian.little);
++        if (self.accessed) |t| try writer.writeInt(i32, t, Endian.little);
++        if (self.created) |t| try writer.writeInt(i32, t, Endian.little);
+     }
+ 
+     fn writeDirectory(ptr: *anyopaque, data: *ArrayList(u8)) !void {
+         const self: *Self = @ptrCast(@alignCast(ptr));
+         const writer = data.writer();
+-        try writer.writeInt(u16, id, .Little);
+-        try writer.writeInt(u16, self.lenDataDirectory(), .Little);
++        try writer.writeInt(u16, id, Endian.little);
++        try writer.writeInt(u16, self.lenDataDirectory(), Endian.little);
+         try writer.writeStruct(self.flags);
+-        if (self.modified) |t| try writer.writeInt(i32, t, .Little);
++        if (self.modified) |t| try writer.writeInt(i32, t, Endian.little);
+     }
+ 
+     pub fn extraField(self: *Self) ExtraField {
+@@ -316,8 +317,8 @@ pub const AnnodueUpdateTagEF = struct {
+     pub const id: u16 = 0x5055; // UP; UPdate tag
+ 
+     pub fn parseSlice(data: []const u8) !Self {
+-        if (std.mem.readIntSliceLittle(u16, data[0..2]) != id) return error.InvalidId;
+-        if (std.mem.readIntSliceLittle(u16, data[2..4]) != 0 or data.len != 4) return error.InvalidSize;
++        if (std.mem.readInt(u16, data[0..2], Endian.little) != id) return error.InvalidId;
++        if (std.mem.readInt(u16, data[2..4], Endian.little) != 0 or data.len != 4) return error.InvalidSize;
+         return Self{};
+     }
+ 
+@@ -331,8 +332,8 @@ pub const AnnodueUpdateTagEF = struct {
+ 
+     fn writeLocal(_: *anyopaque, data: *ArrayList(u8)) !void {
+         const writer = data.writer();
+-        try writer.writeInt(u16, id, .Little);
+-        try writer.writeInt(u16, 0, .Little);
++        try writer.writeInt(u16, id, Endian.little);
++        try writer.writeInt(u16, 0, Endian.little);
+     }
+ 
+     fn writeDirectory(ptr: *anyopaque, data: *ArrayList(u8)) !void {
+diff --git a/src/File.zig b/src/File.zig
+index 9a085de..27fa503 100644
+--- a/src/File.zig
++++ b/src/File.zig
+@@ -40,7 +40,7 @@ pub const File = struct {
+         const raw_data = try file.readToEndAlloc(alloc, 1 << 31);
+         const crc32 = Crc32.hash(raw_data);
+ 
+-        var extra_fields = ArrayList(ExtraField).init(alloc);
++        const extra_fields = ArrayList(ExtraField).init(alloc);
+ 
+         return .{
+             .allocator = alloc,
+diff --git a/src/LocalFileHeader.zig b/src/LocalFileHeader.zig
+index 874281e..d15c147 100644
+--- a/src/LocalFileHeader.zig
++++ b/src/LocalFileHeader.zig
+@@ -1,5 +1,6 @@
+ const std = @import("std");
+ const Allocator = std.mem.Allocator;
++const Endian = std.builtin.Endian;
+ 
+ const Flags = @import("Flags.zig").Flags;
+ const Compression = @import("Compression.zig").Compression;
+@@ -42,22 +43,22 @@ pub const Header = struct {
+     raw_data: []const u8,
+ 
+     pub fn parse(data: []const u8, raw_data: []const u8) !Header {
+-        const sig = std.mem.readIntLittle(u32, data[0..4]);
++        const sig = std.mem.readInt(u32, data[0..4], Endian.little);
+         if (sig != signature) return error.InvalidSignature;
+ 
+-        const fnlen: u16 = std.mem.readIntSliceLittle(u16, data[26..28]);
+-        const eflen: u16 = std.mem.readIntSliceLittle(u16, data[28..30]);
++        const fnlen: u16 = std.mem.readInt(u16, data[26..28], Endian.little);
++        const eflen: u16 = std.mem.readInt(u16, data[28..30], Endian.little);
+         const size: u32 = 32 + fnlen + eflen;
+ 
+         return .{
+             .ver_min = Version.parseSlice(data[4..6]),
+             .flags = .{}, // TODO: impl, std.mem.readIntSliceLittle(u16, data[6..8]),
+-            .compression = @enumFromInt(std.mem.readIntSliceLittle(u16, data[8..10])),
+-            .mod_time = MSDOSTime.parseInt(std.mem.readIntSliceLittle(u16, data[10..12])),
+-            .mod_date = MSDOSDate.parseInt(std.mem.readIntSliceLittle(u16, data[12..14])),
+-            .crc32 = std.mem.readIntSliceLittle(u32, data[14..18]),
+-            .size_compressed = std.mem.readIntSliceLittle(u32, data[18..22]),
+-            .size_uncompressed = std.mem.readIntSliceLittle(u32, data[22..26]),
++            .compression = @enumFromInt(std.mem.readInt(u16, data[8..10], Endian.little)),
++            .mod_time = MSDOSTime.parseInt(std.mem.readInt(u16, data[10..12], Endian.little)),
++            .mod_date = MSDOSDate.parseInt(std.mem.readInt(u16, data[12..14], Endian.little)),
++            .crc32 = std.mem.readInt(u32, data[14..18], Endian.little),
++            .size_compressed = std.mem.readInt(u32, data[18..22], Endian.little),
++            .size_uncompressed = std.mem.readInt(u32, data[22..26], Endian.little),
+             .len_filename = fnlen,
+             .len_extra_field = eflen,
+             .filename = data[30 .. 30 + fnlen],
+diff --git a/src/Zip.zig b/src/Zip.zig
+index 0d2d98f..b942228 100644
+--- a/src/Zip.zig
++++ b/src/Zip.zig
+@@ -2,6 +2,7 @@ const std = @import("std");
+ const Allocator = std.mem.Allocator;
+ const ArrayList = std.ArrayList;
+ const File = std.fs.File;
++const Endian = std.builtin.Endian;
+ 
+ const ZipFile = @import("File.zig").File;
+ 
+@@ -52,7 +53,7 @@ pub const Zip = struct {
+ 
+             var comp = ArrayList(u8).init(alloc);
+             defer comp.deinit();
+-            try file.compression.compress(alloc, file.raw_data, comp.writer());
++            try file.compression.compress(file.raw_data, comp.writer());
+ 
+             var ef_loclen: u16 = 0;
+             var ef_dirlen: u16 = 0;
+@@ -63,17 +64,17 @@ pub const Zip = struct {
+ 
+             // LocalFile
+             //header
+-            try out_w.writeIntLittle(u32, 0x04034B50);
++            try out_w.writeInt(u32, 0x04034B50, Endian.little);
+             try out_w.writeStruct(file.ver_min);
+             try out_w.writeStruct(file.flags);
+-            try out_w.writeIntLittle(u16, @intFromEnum(file.compression));
++            try out_w.writeInt(u16, @intFromEnum(file.compression), Endian.little);
+             try out_w.writeStruct(file.mod_time);
+             try out_w.writeStruct(file.mod_date);
+-            try out_w.writeIntLittle(u32, file.crc32);
+-            try out_w.writeIntLittle(u32, @as(u32, @intCast(comp.items.len)));
+-            try out_w.writeIntLittle(u32, @as(u32, @intCast(file.raw_data.len)));
+-            try out_w.writeIntLittle(u16, @as(u16, @intCast(file.filename.len)));
+-            try out_w.writeIntLittle(u16, ef_loclen);
++            try out_w.writeInt(u32, file.crc32, Endian.little);
++            try out_w.writeInt(u32, @as(u32, @intCast(comp.items.len)), Endian.little);
++            try out_w.writeInt(u32, @as(u32, @intCast(file.raw_data.len)), Endian.little);
++            try out_w.writeInt(u16, @as(u16, @intCast(file.filename.len)), Endian.little);
++            try out_w.writeInt(u16, ef_loclen, Endian.little);
+             try out_w.writeAll(file.filename);
+             for (file.extra_fields.items) |ef|
+                 try ef.writeLocal(out);
+@@ -83,23 +84,23 @@ pub const Zip = struct {
+             // TODO: data descriptor goes here
+ 
+             // CentralDirectoryFileHeader
+-            try cdir_w.writeIntLittle(u32, 0x02014B50);
++            try cdir_w.writeInt(u32, 0x02014B50, Endian.little);
+             try cdir_w.writeStruct(file.ver_made_by);
+             try cdir_w.writeStruct(file.ver_min);
+             try cdir_w.writeStruct(file.flags);
+-            try cdir_w.writeIntLittle(u16, @intFromEnum(file.compression));
++            try cdir_w.writeInt(u16, @intFromEnum(file.compression), Endian.little);
+             try cdir_w.writeStruct(file.mod_time);
+             try cdir_w.writeStruct(file.mod_date);
+-            try cdir_w.writeIntLittle(u32, file.crc32);
+-            try cdir_w.writeIntLittle(u32, @as(u32, @intCast(comp.items.len)));
+-            try cdir_w.writeIntLittle(u32, @as(u32, @intCast(file.raw_data.len)));
+-            try cdir_w.writeIntLittle(u16, @as(u16, @intCast(file.filename.len)));
+-            try cdir_w.writeIntLittle(u16, ef_dirlen);
+-            try cdir_w.writeIntLittle(u16, @as(u16, @intCast(file.comment.len)));
+-            try cdir_w.writeIntLittle(u16, 0);
+-            try cdir_w.writeIntLittle(u16, file.file_attr_internal);
+-            try cdir_w.writeIntLittle(u32, file.file_attr_external);
+-            try cdir_w.writeIntLittle(u32, loc_head_off);
++            try cdir_w.writeInt(u32, file.crc32, Endian.little);
++            try cdir_w.writeInt(u32, @as(u32, @intCast(comp.items.len)), Endian.little);
++            try cdir_w.writeInt(u32, @as(u32, @intCast(file.raw_data.len)), Endian.little);
++            try cdir_w.writeInt(u16, @as(u16, @intCast(file.filename.len)), Endian.little);
++            try cdir_w.writeInt(u16, ef_dirlen, Endian.little);
++            try cdir_w.writeInt(u16, @as(u16, @intCast(file.comment.len)), Endian.little);
++            try cdir_w.writeInt(u16, 0, Endian.little);
++            try cdir_w.writeInt(u16, file.file_attr_internal, Endian.little);
++            try cdir_w.writeInt(u32, file.file_attr_external, Endian.little);
++            try cdir_w.writeInt(u32, loc_head_off, Endian.little);
+             try cdir_w.writeAll(file.filename);
+             for (file.extra_fields.items) |ef|
+                 try ef.writeDirectory(&cdir);
+@@ -110,14 +111,14 @@ pub const Zip = struct {
+         const cdir_head_size: u32 = @intCast(cdir.items.len);
+ 
+         // EndOfCentralDirectoryRecord
+-        try cdir_w.writeIntLittle(u32, 0x06054B50);
+-        try cdir_w.writeIntLittle(u16, 0);
+-        try cdir_w.writeIntLittle(u16, 0);
+-        try cdir_w.writeIntLittle(u16, entries);
+-        try cdir_w.writeIntLittle(u16, entries);
+-        try cdir_w.writeIntLittle(u32, cdir_head_size);
+-        try cdir_w.writeIntLittle(u32, loc_head_off);
+-        try cdir_w.writeIntLittle(u16, if (comment) |c| @as(u16, @intCast(c.len)) else 0);
++        try cdir_w.writeInt(u32, 0x06054B50, Endian.little);
++        try cdir_w.writeInt(u16, 0, Endian.little);
++        try cdir_w.writeInt(u16, 0, Endian.little);
++        try cdir_w.writeInt(u16, entries, Endian.little);
++        try cdir_w.writeInt(u16, entries, Endian.little);
++        try cdir_w.writeInt(u32, cdir_head_size, Endian.little);
++        try cdir_w.writeInt(u32, loc_head_off, Endian.little);
++        try cdir_w.writeInt(u16, if (comment) |c| @as(u16, @intCast(c.len)) else 0, Endian.little);
+         if (comment) |c| try cdir_w.writeAll(c);
+ 
+         try out_w.writeAll(cdir.items);
+diff --git a/src/main.zig b/src/main.zig
+index a6dcdb6..c04c65b 100644
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -63,7 +63,7 @@ test "generate basic zip file" {
+     var archive = ArrayList(u8).init(alloc);
+     defer archive.deinit();
+     try z.write(&archive, null);
+-    assert(Crc32.hash(archive.items) == OUT_CRC32);
++    assert(Crc32.hash(archive.items) == OUT_CRC32); // Fails
+ }
+ 
+ test "extract basic zip file" {

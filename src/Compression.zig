@@ -28,17 +28,14 @@ pub const Compression = enum(u16) {
 
     pub fn compress(
         comp: Compression,
-        alloc: Allocator,
         data: []const u8,
         writer: anytype,
     ) !void {
         try switch (comp) {
             .None => writer.writeAll(data),
             .Deflate => {
-                var defl = try std.compress.deflate.compressor(alloc, writer, .{});
-                defer defl.deinit();
+                var defl = try std.compress.flate.compressor(writer, .{}); // Default compression level
                 _ = try defl.write(data);
-                try defl.close();
             },
             else => return error.UnsupportedCompression,
         };
@@ -59,8 +56,10 @@ pub const Compression = enum(u16) {
             .Deflate => {
                 var fb = std.io.fixedBufferStream(data);
 
-                var defl = try std.compress.deflate.decompressor(alloc, fb.reader(), null);
-                defer defl.deinit();
+                const reader = fb.reader();
+
+                var defl = std.compress.flate.decompressor(reader);
+                // defer defl.deinit();
                 var defl_r = defl.reader();
 
                 const out_data = try defl_r.readAllAlloc(alloc, std.math.maxInt(usize));

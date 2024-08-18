@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const Endian = std.builtin.Endian;
 
 const EndOfCentralDirectoryRecord = @import("EndOfCentralDirectoryRecord.zig").EndOfCentralDirectoryRecord;
 const Flags = @import("Flags.zig").Flags;
@@ -67,31 +68,31 @@ pub const Header = struct {
     }
 
     pub fn parse(data: []const u8, raw_data: []const u8) !Header {
-        const sig = std.mem.readIntLittle(u32, data[0..4]);
+        const sig = std.mem.readVarInt(u32, data[0..4], Endian.little);
         if (sig != signature) return error.InvalidSignature;
 
-        const fnlen: u16 = std.mem.readIntSliceLittle(u16, data[28..30]);
-        const eflen: u16 = std.mem.readIntSliceLittle(u16, data[30..32]);
-        const clen: u16 = std.mem.readIntSliceLittle(u16, data[32..34]);
+        const fnlen: u16 = std.mem.readVarInt(u16, data[28..30], Endian.little);
+        const eflen: u16 = std.mem.readVarInt(u16, data[30..32], Endian.little);
+        const clen: u16 = std.mem.readVarInt(u16, data[32..34], Endian.little);
         const size: u32 = 46 + fnlen + eflen + clen;
 
         return .{
             .ver_made_by = Version.parseSlice(data[4..6]),
             .ver_min = Version.parseSlice(data[6..8]),
-            .flags = .{}, // TODO: impl, std.mem.readIntSliceLittle(u16, data[8..10]),
-            .compression = @enumFromInt(std.mem.readIntSliceLittle(u16, data[10..12])),
-            .mod_time = MSDOSTime.parseInt(std.mem.readIntSliceLittle(u16, data[12..14])),
-            .mod_date = MSDOSDate.parseInt(std.mem.readIntSliceLittle(u16, data[14..16])),
-            .crc32 = std.mem.readIntSliceLittle(u32, data[16..20]),
-            .size_compressed = std.mem.readIntSliceLittle(u32, data[20..24]),
-            .size_uncompressed = std.mem.readIntSliceLittle(u32, data[24..28]),
+            .flags = .{}, // TODO: impl, std.mem.readVarIntSliceLittle(u16, data[8..10]),
+            .compression = @enumFromInt(std.mem.readVarInt(u16, data[10..12], Endian.little)),
+            .mod_time = MSDOSTime.parseInt(std.mem.readVarInt(u16, data[12..14], Endian.little)),
+            .mod_date = MSDOSDate.parseInt(std.mem.readVarInt(u16, data[14..16], Endian.little)),
+            .crc32 = std.mem.readVarInt(u32, data[16..20], Endian.little),
+            .size_compressed = std.mem.readVarInt(u32, data[20..24], Endian.little),
+            .size_uncompressed = std.mem.readVarInt(u32, data[24..28], Endian.little),
             .len_filename = fnlen,
             .len_extra_field = eflen,
             .len_comment = clen,
-            .disk = std.mem.readIntSliceLittle(u16, data[34..36]),
-            .attr_internal = std.mem.readIntSliceLittle(u16, data[36..38]), // TODO: impl
-            .attr_external = std.mem.readIntSliceLittle(u32, data[38..42]), // TODO: impl
-            .local_header_offset = std.mem.readIntSliceLittle(u32, data[42..46]),
+            .disk = std.mem.readVarInt(u16, data[34..36], Endian.little),
+            .attr_internal = std.mem.readVarInt(u16, data[36..38], Endian.little), // TODO: impl
+            .attr_external = std.mem.readVarInt(u32, data[38..42], Endian.little), // TODO: impl
+            .local_header_offset = std.mem.readVarInt(u32, data[42..46], Endian.little),
             .filename = data[46 .. 46 + fnlen],
             .extra_field = data[46 + fnlen .. 46 + fnlen + eflen],
             .comment = data[46 + fnlen + eflen .. 46 + fnlen + eflen + clen],

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Endian = std.builtin.Endian;
 
 // https://libzip.org/specifications/extrafld.txt
 
@@ -46,8 +47,8 @@ pub const RawExtraField = struct {
     }
 
     pub fn parse(data: []const u8) !Self {
-        const id = std.mem.readIntSliceLittle(u16, data[0..2]);
-        const len = std.mem.readIntSliceLittle(u16, data[2..4]) + 4;
+        const id = std.mem.readIntSlicEndian.little(u16, data[0..2]);
+        const len = std.mem.readIntSlicEndian.little(u16, data[2..4]) + 4;
         if (len != data.len) return error.InvalidSize;
         return .{
             .id = id,
@@ -81,9 +82,9 @@ pub const GenericEF = struct {
     data: []const u8,
 
     pub fn parseSlice(data: []const u8) !Self {
-        if (std.mem.readIntSliceLittle(u16, data[2..4]) + 4 != data.len) return error.InvalidSize;
+        if (std.mem.readIntSlicEndian.little(u16, data[2..4]) + 4 != data.len) return error.InvalidSize;
         return .{
-            .id = std.mem.readIntSliceLittle(u16, data[0..2]),
+            .id = std.mem.readIntSlicEndian.little(u16, data[0..2]),
             .data = data,
         };
     }
@@ -101,8 +102,8 @@ pub const GenericEF = struct {
     fn writeLocal(ptr: *anyopaque, data: *ArrayList(u8)) !void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         const writer = data.writer();
-        try writer.writeIntLittle(u16, self.id);
-        try writer.writeIntLittle(u16, @as(u16, @intCast(self.data.len)));
+        try writer.writeInEndian.little(u16, self.id);
+        try writer.writeInEndian.little(u16, @as(u16, @intCast(self.data.len)));
         if (self.data.len > 0)
             try writer.writeAll(self.data);
     }
@@ -110,8 +111,8 @@ pub const GenericEF = struct {
     fn writeDirectory(ptr: *anyopaque, data: *ArrayList(u8)) !void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         const writer = data.writer();
-        try writer.writeIntLittle(u16, self.id);
-        try writer.writeIntLittle(u16, @as(u16, @intCast(self.data.len)));
+        try writer.writeInEndian.little(u16, self.id);
+        try writer.writeInEndian.little(u16, @as(u16, @intCast(self.data.len)));
         if (self.data.len > 0)
             try writer.writeAll(self.data);
     }
@@ -133,8 +134,8 @@ pub const TemplateEF = struct {
     pub const id: u16 = 0xFFFF;
 
     pub fn parseSlice(data: []const u8) !Self {
-        if (std.mem.readIntSliceLittle(u16, data[0..2]) != id) return error.InvalidId;
-        if (std.mem.readIntSliceLittle(u16, data[2..4]) + 4 != data.len) return error.InvalidSize;
+        if (std.mem.readIntSlicEndian.little(u16, data[0..2]) != id) return error.InvalidId;
+        if (std.mem.readIntSlicEndian.little(u16, data[2..4]) + 4 != data.len) return error.InvalidSize;
         return .{};
     }
 
@@ -152,7 +153,7 @@ pub const TemplateEF = struct {
         const self: *Self = @ptrCast(@alignCast(ptr));
         _ = self;
         const writer = data.writer();
-        try writer.writeInt(u16, id, .Little);
+        try writer.writeInt(u16, id, Endian.little);
         // ExtraField
         //  2 | Header ID
         //  2 | Data length (n)
@@ -163,7 +164,7 @@ pub const TemplateEF = struct {
         const self: *Self = @ptrCast(@alignCast(ptr));
         _ = self;
         const writer = data.writer();
-        try writer.writeInt(u16, id, .Little);
+        try writer.writeInt(u16, id, Endian.little);
         // ExtraField
         //  2 | Header ID
         //  2 | Data length (n)
@@ -197,28 +198,28 @@ pub const ExtendedTimestampEF = struct {
     created: ?i32 = null,
 
     pub fn parseSlice(data: []const u8) !Self {
-        if (std.mem.readIntSliceLittle(u16, data[0..2]) != id)
+        if (std.mem.readIntSlicEndian.little(u16, data[0..2]) != id)
             return error.InvalidId;
-        if (std.mem.readIntSliceLittle(u16, data[2..4]) + 4 != data.len or data.len < 5)
+        if (std.mem.readIntSlicEndian.little(u16, data[2..4]) + 4 != data.len or data.len < 5)
             return error.InvalidSize;
 
         var et = Self{};
 
-        var flags = data[4];
+        const flags = data[4];
         var idx: usize = 5;
         if ((flags & 1) > 0 and idx + 4 <= data.len) {
             et.flags.modified = true;
-            et.modified = std.mem.readIntSliceLittle(i32, data[idx .. idx + 4]);
+            et.modified = std.mem.readIntSlicEndian.little(i32, data[idx .. idx + 4]);
             idx += 4;
         }
         if ((flags & 2) > 0 and idx + 4 <= data.len) {
             et.flags.accessed = true;
-            et.accessed = std.mem.readIntSliceLittle(i32, data[idx .. idx + 4]);
+            et.accessed = std.mem.readIntSlicEndian.little(i32, data[idx .. idx + 4]);
             idx += 4;
         }
         if ((flags & 4) > 0 and idx + 4 <= data.len) {
             et.flags.created = true;
-            et.created = std.mem.readIntSliceLittle(i32, data[idx .. idx + 4]);
+            et.created = std.mem.readIntSlicEndian.little(i32, data[idx .. idx + 4]);
             idx += 4;
         }
 
@@ -281,21 +282,21 @@ pub const ExtendedTimestampEF = struct {
     fn writeLocal(ptr: *anyopaque, data: *ArrayList(u8)) !void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         const writer = data.writer();
-        try writer.writeInt(u16, id, .Little);
-        try writer.writeInt(u16, self.lenDataLocal(), .Little);
+        try writer.writeInt(u16, id, Endian.little);
+        try writer.writeInt(u16, self.lenDataLocal(), Endian.little);
         try writer.writeStruct(self.flags);
-        if (self.modified) |t| try writer.writeInt(i32, t, .Little);
-        if (self.accessed) |t| try writer.writeInt(i32, t, .Little);
-        if (self.created) |t| try writer.writeInt(i32, t, .Little);
+        if (self.modified) |t| try writer.writeInt(i32, t, Endian.little);
+        if (self.accessed) |t| try writer.writeInt(i32, t, Endian.little);
+        if (self.created) |t| try writer.writeInt(i32, t, Endian.little);
     }
 
     fn writeDirectory(ptr: *anyopaque, data: *ArrayList(u8)) !void {
         const self: *Self = @ptrCast(@alignCast(ptr));
         const writer = data.writer();
-        try writer.writeInt(u16, id, .Little);
-        try writer.writeInt(u16, self.lenDataDirectory(), .Little);
+        try writer.writeInt(u16, id, Endian.little);
+        try writer.writeInt(u16, self.lenDataDirectory(), Endian.little);
         try writer.writeStruct(self.flags);
-        if (self.modified) |t| try writer.writeInt(i32, t, .Little);
+        if (self.modified) |t| try writer.writeInt(i32, t, Endian.little);
     }
 
     pub fn extraField(self: *Self) ExtraField {
@@ -316,8 +317,8 @@ pub const AnnodueUpdateTagEF = struct {
     pub const id: u16 = 0x5055; // UP; UPdate tag
 
     pub fn parseSlice(data: []const u8) !Self {
-        if (std.mem.readIntSliceLittle(u16, data[0..2]) != id) return error.InvalidId;
-        if (std.mem.readIntSliceLittle(u16, data[2..4]) != 0 or data.len != 4) return error.InvalidSize;
+        if (std.mem.readInt(u16, data[0..2], Endian.little) != id) return error.InvalidId;
+        if (std.mem.readInt(u16, data[2..4], Endian.little) != 0 or data.len != 4) return error.InvalidSize;
         return Self{};
     }
 
@@ -331,8 +332,8 @@ pub const AnnodueUpdateTagEF = struct {
 
     fn writeLocal(_: *anyopaque, data: *ArrayList(u8)) !void {
         const writer = data.writer();
-        try writer.writeInt(u16, id, .Little);
-        try writer.writeInt(u16, 0, .Little);
+        try writer.writeInt(u16, id, Endian.little);
+        try writer.writeInt(u16, 0, Endian.little);
     }
 
     fn writeDirectory(ptr: *anyopaque, data: *ArrayList(u8)) !void {

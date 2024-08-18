@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const Endian = std.builtin.Endian;
 
 const Flags = @import("Flags.zig").Flags;
 const Compression = @import("Compression.zig").Compression;
@@ -42,22 +43,22 @@ pub const Header = struct {
     raw_data: []const u8,
 
     pub fn parse(data: []const u8, raw_data: []const u8) !Header {
-        const sig = std.mem.readIntLittle(u32, data[0..4]);
+        const sig = std.mem.readInt(u32, data[0..4], Endian.little);
         if (sig != signature) return error.InvalidSignature;
 
-        const fnlen: u16 = std.mem.readIntSliceLittle(u16, data[26..28]);
-        const eflen: u16 = std.mem.readIntSliceLittle(u16, data[28..30]);
+        const fnlen: u16 = std.mem.readInt(u16, data[26..28], Endian.little);
+        const eflen: u16 = std.mem.readInt(u16, data[28..30], Endian.little);
         const size: u32 = 32 + fnlen + eflen;
 
         return .{
             .ver_min = Version.parseSlice(data[4..6]),
             .flags = .{}, // TODO: impl, std.mem.readIntSliceLittle(u16, data[6..8]),
-            .compression = @enumFromInt(std.mem.readIntSliceLittle(u16, data[8..10])),
-            .mod_time = MSDOSTime.parseInt(std.mem.readIntSliceLittle(u16, data[10..12])),
-            .mod_date = MSDOSDate.parseInt(std.mem.readIntSliceLittle(u16, data[12..14])),
-            .crc32 = std.mem.readIntSliceLittle(u32, data[14..18]),
-            .size_compressed = std.mem.readIntSliceLittle(u32, data[18..22]),
-            .size_uncompressed = std.mem.readIntSliceLittle(u32, data[22..26]),
+            .compression = @enumFromInt(std.mem.readInt(u16, data[8..10], Endian.little)),
+            .mod_time = MSDOSTime.parseInt(std.mem.readInt(u16, data[10..12], Endian.little)),
+            .mod_date = MSDOSDate.parseInt(std.mem.readInt(u16, data[12..14], Endian.little)),
+            .crc32 = std.mem.readInt(u32, data[14..18], Endian.little),
+            .size_compressed = std.mem.readInt(u32, data[18..22], Endian.little),
+            .size_uncompressed = std.mem.readInt(u32, data[22..26], Endian.little),
             .len_filename = fnlen,
             .len_extra_field = eflen,
             .filename = data[30 .. 30 + fnlen],

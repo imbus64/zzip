@@ -63,7 +63,7 @@ test "generate basic zip file" {
     var archive = ArrayList(u8).init(alloc);
     defer archive.deinit();
     try z.write(&archive, null);
-    assert(Crc32.hash(archive.items) == OUT_CRC32);
+    assert(Crc32.hash(archive.items) == OUT_CRC32); // Fails
 }
 
 test "extract basic zip file" {

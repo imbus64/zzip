@@ -40,7 +40,7 @@ pub const File = struct {
         const raw_data = try file.readToEndAlloc(alloc, 1 << 31);
         const crc32 = Crc32.hash(raw_data);
 
-        var extra_fields = ArrayList(ExtraField).init(alloc);
+        const extra_fields = ArrayList(ExtraField).init(alloc);
 
         return .{
             .allocator = alloc,

@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const File = std.fs.File;
+const Endian = std.builtin.Endian;
 
 const ZipFile = @import("File.zig").File;
 
@@ -52,7 +53,7 @@ pub const Zip = struct {
 
             var comp = ArrayList(u8).init(alloc);
             defer comp.deinit();
-            try file.compression.compress(alloc, file.raw_data, comp.writer());
+            try file.compression.compress(file.raw_data, comp.writer());
 
             var ef_loclen: u16 = 0;
             var ef_dirlen: u16 = 0;
@@ -63,17 +64,17 @@ pub const Zip = struct {
 
             // LocalFile
             //header
-            try out_w.writeIntLittle(u32, 0x04034B50);
+            try out_w.writeInt(u32, 0x04034B50, Endian.little);
             try out_w.writeStruct(file.ver_min);
             try out_w.writeStruct(file.flags);
-            try out_w.writeIntLittle(u16, @intFromEnum(file.compression));
+            try out_w.writeInt(u16, @intFromEnum(file.compression), Endian.little);
             try out_w.writeStruct(file.mod_time);
             try out_w.writeStruct(file.mod_date);
-            try out_w.writeIntLittle(u32, file.crc32);
-            try out_w.writeIntLittle(u32, @as(u32, @intCast(comp.items.len)));
-            try out_w.writeIntLittle(u32, @as(u32, @intCast(file.raw_data.len)));
-            try out_w.writeIntLittle(u16, @as(u16, @intCast(file.filename.len)));
-            try out_w.writeIntLittle(u16, ef_loclen);
+            try out_w.writeInt(u32, file.crc32, Endian.little);
+            try out_w.writeInt(u32, @as(u32, @intCast(comp.items.len)), Endian.little);
+            try out_w.writeInt(u32, @as(u32, @intCast(file.raw_data.len)), Endian.little);
+            try out_w.writeInt(u16, @as(u16, @intCast(file.filename.len)), Endian.little);
+            try out_w.writeInt(u16, ef_loclen, Endian.little);
             try out_w.writeAll(file.filename);
             for (file.extra_fields.items) |ef|
                 try ef.writeLocal(out);
@@ -83,23 +84,23 @@ pub const Zip = struct {
             // TODO: data descriptor goes here
 
             // CentralDirectoryFileHeader
-            try cdir_w.writeIntLittle(u32, 0x02014B50);
+            try cdir_w.writeInt(u32, 0x02014B50, Endian.little);
             try cdir_w.writeStruct(file.ver_made_by);
             try cdir_w.writeStruct(file.ver_min);
             try cdir_w.writeStruct(file.flags);
-            try cdir_w.writeIntLittle(u16, @intFromEnum(file.compression));
+            try cdir_w.writeInt(u16, @intFromEnum(file.compression), Endian.little);
             try cdir_w.writeStruct(file.mod_time);
             try cdir_w.writeStruct(file.mod_date);
-            try cdir_w.writeIntLittle(u32, file.crc32);
-            try cdir_w.writeIntLittle(u32, @as(u32, @intCast(comp.items.len)));
-            try cdir_w.writeIntLittle(u32, @as(u32, @intCast(file.raw_data.len)));
-            try cdir_w.writeIntLittle(u16, @as(u16, @intCast(file.filename.len)));
-            try cdir_w.writeIntLittle(u16, ef_dirlen);
-            try cdir_w.writeIntLittle(u16, @as(u16, @intCast(file.comment.len)));
-            try cdir_w.writeIntLittle(u16, 0);
-            try cdir_w.writeIntLittle(u16, file.file_attr_internal);
-            try cdir_w.writeIntLittle(u32, file.file_attr_external);
-            try cdir_w.writeIntLittle(u32, loc_head_off);
+            try cdir_w.writeInt(u32, file.crc32, Endian.little);
+            try cdir_w.writeInt(u32, @as(u32, @intCast(comp.items.len)), Endian.little);
+            try cdir_w.writeInt(u32, @as(u32, @intCast(file.raw_data.len)), Endian.little);
+            try cdir_w.writeInt(u16, @as(u16, @intCast(file.filename.len)), Endian.little);
+            try cdir_w.writeInt(u16, ef_dirlen, Endian.little);
+            try cdir_w.writeInt(u16, @as(u16, @intCast(file.comment.len)), Endian.little);
+            try cdir_w.writeInt(u16, 0, Endian.little);
+            try cdir_w.writeInt(u16, file.file_attr_internal, Endian.little);
+            try cdir_w.writeInt(u32, file.file_attr_external, Endian.little);
+            try cdir_w.writeInt(u32, loc_head_off, Endian.little);
             try cdir_w.writeAll(file.filename);
             for (file.extra_fields.items) |ef|
                 try ef.writeDirectory(&cdir);
@@ -110,14 +111,14 @@ pub const Zip = struct {
         const cdir_head_size: u32 = @intCast(cdir.items.len);
 
         // EndOfCentralDirectoryRecord
-        try cdir_w.writeIntLittle(u32, 0x06054B50);
-        try cdir_w.writeIntLittle(u16, 0);
-        try cdir_w.writeIntLittle(u16, 0);
-        try cdir_w.writeIntLittle(u16, entries);
-        try cdir_w.writeIntLittle(u16, entries);
-        try cdir_w.writeIntLittle(u32, cdir_head_size);
-        try cdir_w.writeIntLittle(u32, loc_head_off);
-        try cdir_w.writeIntLittle(u16, if (comment) |c| @as(u16, @intCast(c.len)) else 0);
+        try cdir_w.writeInt(u32, 0x06054B50, Endian.little);
+        try cdir_w.writeInt(u16, 0, Endian.little);
+        try cdir_w.writeInt(u16, 0, Endian.little);
+        try cdir_w.writeInt(u16, entries, Endian.little);
+        try cdir_w.writeInt(u16, entries, Endian.little);
+        try cdir_w.writeInt(u32, cdir_head_size, Endian.little);
+        try cdir_w.writeInt(u32, loc_head_off, Endian.little);
+        try cdir_w.writeInt(u16, if (comment) |c| @as(u16, @intCast(c.len)) else 0, Endian.little);
         if (comment) |c| try cdir_w.writeAll(c);
 
         try out_w.writeAll(cdir.items);

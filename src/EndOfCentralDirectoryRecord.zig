@@ -1,4 +1,5 @@
 const std = @import("std");
+const Endian = std.builtin.Endian;
 const Allocator = std.mem.Allocator;
 
 // EndOfCentralDirectoryRecord
@@ -29,12 +30,12 @@ pub const EndOfCentralDirectoryRecord = struct {
         var eocd: ?[]const u8 = null;
         var clen: u16 = undefined;
         for (2..@min(data.len, 0xFFFF)) |i| {
-            const i_clen = data.len - i;
-            clen = std.mem.readIntSliceLittle(u16, data[i_clen .. i_clen + 2]);
+            const i_clen = data.len - i; // TODO: Cleanup
+            clen = std.mem.readVarInt(u16, data[i_clen .. i_clen + 2], Endian.little);
             if (clen != i - 2 and i_clen >= 20) continue;
 
             const i_sig = data.len - i - 20;
-            const sig = std.mem.readIntSliceLittle(u32, data[i_sig .. i_sig + 4]);
+            const sig = std.mem.readVarInt(u32, data[i_sig .. i_sig + 4], Endian.little);
             if (sig != signature) continue;
 
             eocd = data[i_sig..data.len];
@@ -43,12 +44,12 @@ pub const EndOfCentralDirectoryRecord = struct {
         if (eocd == null) return error.EndOfCentralDirectoryNotFound;
 
         return .{
-            .disk = std.mem.readIntLittle(u16, eocd.?[4..6]),
-            .directory_disk = std.mem.readIntLittle(u16, eocd.?[6..8]),
-            .records_this_disk = std.mem.readIntLittle(u16, eocd.?[8..10]),
-            .total_records = std.mem.readIntLittle(u16, eocd.?[10..12]),
-            .directory_size = std.mem.readIntLittle(u32, eocd.?[12..16]),
-            .directory_start_offset = std.mem.readIntLittle(u32, eocd.?[16..20]),
+            .disk = std.mem.readVarInt(u16, eocd.?[4..6], Endian.little),
+            .directory_disk = std.mem.readVarInt(u16, eocd.?[6..8], Endian.little),
+            .records_this_disk = std.mem.readVarInt(u16, eocd.?[8..10], Endian.little),
+            .total_records = std.mem.readVarInt(u16, eocd.?[10..12], Endian.little),
+            .directory_size = std.mem.readVarInt(u32, eocd.?[12..16], Endian.little),
+            .directory_start_offset = std.mem.readVarInt(u32, eocd.?[16..20], Endian.little),
             .comment_length = clen,
             .comment = eocd.?[22 .. 22 + clen],
             .raw_record = eocd.?,
